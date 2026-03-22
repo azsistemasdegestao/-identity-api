@@ -32,9 +32,10 @@ Thumbs.db
 *.orig
 
 ## Secrets
+## appsettings.Development.json is intentionally excluded — copy it to
+## appsettings.Local.json and fill in real values for local development.
 appsettings.*.json
 !appsettings.json
-!appsettings.Development.json
 
 ## Coverage
 coverage/
