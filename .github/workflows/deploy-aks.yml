@@ -1,0 +1,123 @@
+name: CI/CD — Build, Test & Deploy to AKS
+
+on:
+  push:
+    branches: [main]
+
+env:
+  DOTNET_VERSION: "8.0.x"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore identity-api.sln
+
+      - name: Build
+        run: dotnet build identity-api.sln -c Release --no-restore
+
+      - name: Run tests with coverage
+        run: |
+          dotnet test identity-api.sln \
+            --no-build \
+            -c Release \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: ./coverage
+
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.ACR_REGISTRY }}/identity-api
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+
+      - name: Apply namespace
+        run: kubectl apply -f k8s/namespace.yml
+
+      - name: Substitute configmap placeholders and apply
+        run: |
+          sed \
+            -e "s|\$(SQL_CONNECTION_STRING)|${{ secrets.SQL_CONNECTION_STRING }}|g" \
+            -e "s|\$(JWT_ISSUER)|${{ secrets.JWT_ISSUER }}|g" \
+            -e "s|\$(JWT_AUDIENCE)|${{ secrets.JWT_AUDIENCE }}|g" \
+            -e "s|\$(JWT_KEY_ACCESS)|${{ secrets.JWT_KEY_ACCESS }}|g" \
+            -e "s|\$(JWT_KEY_REFRESH)|${{ secrets.JWT_KEY_REFRESH }}|g" \
+            -e "s|\$(SERVICE_BUS_CONNECTION_STRING)|${{ secrets.SERVICE_BUS_CONNECTION_STRING }}|g" \
+            -e "s|\$(PASSWORD_RESET_URL)|${{ secrets.PASSWORD_RESET_URL }}|g" \
+            -e "s|\$(APP_INSIGHTS_CONNECTION_STRING)|${{ secrets.APP_INSIGHTS_CONNECTION_STRING }}|g" \
+            k8s/configmap.yml | kubectl apply -f -
+
+      - name: Apply deployment and service
+        run: |
+          kubectl apply -f k8s/deployment.yml
+          kubectl apply -f k8s/service.yml
+
+      - name: Update deployment image
+        run: |
+          IMAGE="${{ secrets.ACR_REGISTRY }}/identity-api:sha-${{ github.sha }}"
+          kubectl set image deployment/identity-api identity-api=${IMAGE} -n identity-api
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/identity-api -n identity-api --timeout=120s

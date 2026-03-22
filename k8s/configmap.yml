@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: identity-api-config
+  namespace: identity-api
+data:
+  appsettings.json: |
+    {
+      "Logging": {
+        "LogLevel": {
+          "Default": "Information",
+          "Microsoft.AspNetCore": "Warning",
+          "Microsoft.EntityFrameworkCore": "Warning"
+        }
+      },
+      "AllowedHosts": "*",
+      "ConnectionStrings": {
+        "DefaultConnection": "$(SQL_CONNECTION_STRING)"
+      },
+      "Jwt": {
+        "Issuer": "$(JWT_ISSUER)",
+        "Audience": "$(JWT_AUDIENCE)",
+        "KeyAccessToken": "$(JWT_KEY_ACCESS)",
+        "KeyRefreshToken": "$(JWT_KEY_REFRESH)",
+        "ExpiresAccessToken": 3,
+        "ExpiresRefreshToken": 24
+      },
+      "AzureServiceBus": {
+        "ConnectionString": "$(SERVICE_BUS_CONNECTION_STRING)"
+      },
+      "App": {
+        "Name": "Identity API",
+        "PasswordResetUrl": "$(PASSWORD_RESET_URL)"
+      },
+      "Cors": { "AllowedOrigins": [] },
+      "ApplicationInsights": {
+        "ConnectionString": "$(APP_INSIGHTS_CONNECTION_STRING)"
+      }
+    }

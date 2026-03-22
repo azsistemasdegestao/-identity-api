@@ -1,0 +1,46 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+*.DotSettings.user
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+!packages/build/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## IDE
+*.DS_Store
+Thumbs.db
+*.swp
+*.orig
+
+## Secrets
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+## Coverage
+coverage/
+*.coverage
+*.coveragexml
+
+## Logs
+*.log
+logs/
